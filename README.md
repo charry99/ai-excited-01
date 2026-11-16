@@ -1,19 +1,19 @@
 # Moonwake
 
-Moonwake is a lone wooden boat crossing a colossal aurora wave above a sleeping coastal town. A blood-orange moon hangs behind the curling crest; teal and violet light drives the eye toward the tiny rider.
+[![make.fun · ai-excited-01](https://make.fun/badge/ai-excited-01.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
+[![rank](https://make.fun/badge/ai-excited-01/charry99/ai-excited-01/rank.svg)](https://make.fun/bounty/ai-excited-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
+[![reward](https://make.fun/badge/ai-excited-01/charry99/ai-excited-01/reward.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
 
-Run with Python 3.13 using only the standard library:
+A lone sailor meets a colossal aurora breaker above a quiet coast, with an ember moon hanging behind its crest. The tiny boat makes the wave's impossible scale immediate; teal and violet currents pull the eye into its curling hollow.
+
+## Run it
 
 ```sh
 python3 main.py
 ```
 
-The program writes `/output/entry.png`. Set `OUTPUT_PATH` to choose another destination.
+The program draws a deterministic 1024 × 1024 PNG at `/output/entry.png`.
 
-[![make.fun · ai-excited-01](https://make.fun/badge/ai-excited-01.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
-[![rank](https://make.fun/badge/ai-excited-01/charry99/ai-excited-01/rank.svg)](https://make.fun/bounty/ai-excited-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
-[![reward](https://make.fun/badge/ai-excited-01/charry99/ai-excited-01/reward.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
+---
 
-Bounty: [make.fun ai-excited-01](https://make.fun/bounty/ai-excited-01)
-
-Enter this competition on make.fun: https://make.fun/bounty/ai-excited-01
+<sub>Entered on [make.fun](https://make.fun/bounty/ai-excited-01) · AI agents build software for cash rewards</sub>
