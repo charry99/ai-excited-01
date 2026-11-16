@@ -6,160 +6,165 @@ import zlib
 W = H = 1024
 pixels = bytearray(W * H * 3)
 
-
-def put(x, y, color):
+def blend(x, y, color, alpha=255):
     if 0 <= x < W and 0 <= y < H:
         i = (y * W + x) * 3
-        pixels[i:i + 3] = bytes(color)
+        if alpha == 255:
+            pixels[i:i+3] = bytes(color)
+        else:
+            a = alpha / 255.0
+            pixels[i] = int(pixels[i] * (1-a) + color[0] * a)
+            pixels[i+1] = int(pixels[i+1] * (1-a) + color[1] * a)
+            pixels[i+2] = int(pixels[i+2] * (1-a) + color[2] * a)
 
+def rect(x0, y0, x1, y1, color):
+    for y in range(max(0, y0), min(H, y1)):
+        for x in range(max(0, x0), min(W, x1)):
+            blend(x, y, color)
 
-def blend(x, y, color, a=1.0):
-    if 0 <= x < W and 0 <= y < H:
-        i = (y * W + x) * 3
-        for k in range(3):
-            pixels[i + k] = int(pixels[i + k] * (1 - a) + color[k] * a)
+def disc(cx, cy, r, color, alpha=255):
+    r2 = r*r
+    for y in range(max(0, int(cy-r)), min(H, int(cy+r)+1)):
+        dy = y-cy
+        span = int(math.sqrt(max(0, r2-dy*dy)))
+        for x in range(max(0, int(cx-span)), min(W, int(cx+span)+1)):
+            blend(x, y, color, alpha)
 
-
-def disk(cx, cy, r, color, feather=0):
-    x0, x1 = max(0, int(cx-r-1)), min(W, int(cx+r+2))
-    y0, y1 = max(0, int(cy-r-1)), min(H, int(cy+r+2))
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            d = math.hypot(x-cx, y-cy)
-            if d <= r:
-                blend(x, y, color, min(1, r-d+0.5) if feather else 1)
-
-
-def polygon(points, color):
-    ymin = max(0, int(min(p[1] for p in points)))
-    ymax = min(H-1, int(max(p[1] for p in points)))
-    for y in range(ymin, ymax+1):
-        xs = []
-        for j in range(len(points)):
-            x1, y1 = points[j]
-            x2, y2 = points[(j+1) % len(points)]
-            if (y1 <= y < y2) or (y2 <= y < y1):
-                xs.append(x1 + (y-y1) * (x2-x1) / (y2-y1))
-        xs.sort()
-        for a, b in zip(xs[::2], xs[1::2]):
-            lo, hi = max(0, int(a)), min(W-1, int(b))
-            for x in range(lo, hi+1):
-                put(x, y, color)
-
-
-def bezier(p0, p1, p2, p3, n=120):
-    out = []
-    for i in range(n+1):
-        t = i/n
-        u = 1-t
-        out.append((u**3*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t**3*p3[0],
-                    u**3*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t**3*p3[1]))
+def bezier(a, b, c, d, steps=160):
+    out=[]
+    for j in range(steps+1):
+        t=j/steps; u=1-t
+        out.append((u*u*u*a[0]+3*u*u*t*b[0]+3*u*t*t*c[0]+t*t*t*d[0],
+                    u*u*u*a[1]+3*u*u*t*b[1]+3*u*t*t*c[1]+t*t*t*d[1]))
     return out
 
+def polygon(points, color, alpha=255):
+    miny=max(0,int(min(p[1] for p in points))); maxy=min(H-1,int(max(p[1] for p in points)))
+    for y in range(miny,maxy+1):
+        xs=[]
+        for i in range(len(points)):
+            x1,y1=points[i]; x2,y2=points[(i+1)%len(points)]
+            if (y1 <= y < y2) or (y2 <= y < y1):
+                xs.append(x1+(y-y1)*(x2-x1)/(y2-y1))
+        xs.sort()
+        for k in range(0,len(xs)-1,2):
+            for x in range(max(0,int(xs[k])),min(W,int(xs[k+1])+1)):
+                blend(x,y,color,alpha)
 
-# Deep dusk gradient and a restrained horizon glow.
+def stroke(points, color, width, alpha=255):
+    r=width/2
+    for (x1,y1),(x2,y2) in zip(points,points[1:]):
+        dx=x2-x1; dy=y2-y1; n=max(1,int(math.hypot(dx,dy)*1.4))
+        for j in range(n+1):
+            t=j/n; disc(x1+dx*t,y1+dy*t,r,color,alpha)
+
+# Deep dusk gradient, with a darkened horizon for the town silhouette.
 for y in range(H):
-    t = y / H
-    for x in range(W):
-        glow = max(0, 1 - math.hypot((x-520)/650, (y-480)/600))
-        pixels[(y*W+x)*3:(y*W+x)*3+3] = bytes((int(8+10*t+28*glow), int(13+13*t+15*glow), int(43+21*t+25*glow)))
+    t=y/(H-1)
+    col=(int(7+10*t), int(13+5*t), int(39+20*t))
+    rect(0,y,W,y+1,col)
 
-# Fine stars, placed on a fixed geometric rhythm.
-for row in range(13):
-    for col in range(17):
-        x = 34 + col*59 + (row*37 % 29)
-        y = 35 + row*37 + (col*19 % 17)
-        if y < 505 and not (350 < x < 690 and 190 < y < 520):
-            disk(x, y, 1.3 + ((row*7+col*3)%4)*0.35, (110, 206, 226))
+# Fine stars and a few distant, quiet glints.
+for i in range(145):
+    x=(i*173+61)%W; y=(i*293+27)%560
+    size=2 if i%11==0 else 1
+    disc(x,y,size,(151,190,220),170 if i%4 else 235)
 
-# Huge low ember moon, with a crisp disc and a thin hot rim.
-disk(515, 385, 218, (246, 77, 43))
-disk(515, 385, 210, (255, 112, 54))
-for yy in range(230, 540):
-    for xx in range(310, 721):
-        d = math.hypot(xx-515, yy-385)
-        if d < 203:
-            stripe = (int(yy*0.29) % 23 == 0) or (int((xx+yy)*0.11) % 47 == 0)
-            if stripe:
-                blend(xx, yy, (255, 158, 73), 0.16)
+# Blood-orange moon halo and disc, deliberately low behind the curl.
+disc(720,390,252,(180,39,31),28)
+disc(720,390,214,(255,91,40),255)
+disc(720,390,195,(255,116,49),255)
+# Soft bands across the moon.
+for yy,ww,aa in [(324,116,34),(367,174,30),(448,130,28)]:
+    disc(720,yy,ww,(255,190,106),aa)
 
-# Far coastal ridges and sleeping town.
-polygon([(0,610),(140,558),(260,585),(370,545),(470,580),(610,550),(760,590),(900,552),(1024,580),(1024,780),(0,780)], (14,24,55))
-for i in range(16):
-    x = i*70-10
-    base = 704 + (i*23 % 41)
-    ww = 42 + i*7 % 26
-    hh = 48 + i*31 % 58
-    polygon([(x,base),(x,base-hh),(x+ww//2,base-hh-19),(x+ww,base-hh),(x+ww,base)], (9,18,42))
-    for wx in range(x+8, x+ww-4, 15):
-        wy = base - 23 - ((wx+i*5) % max(20, hh-22))
-        if wy < base-8:
-            put(wx, wy, (255, 183, 88))
-            put(wx+1, wy, (255, 183, 88))
+# Sleeping coastal town: roofs, clustered houses, and tiny warm windows.
+rect(0,650,1024,774,(10,18,43))
+for x,w,h in [(18,84,80),(111,65,111),(191,99,72),(300,72,122),(384,95,85),(493,76,132),(578,91,75),(686,85,112),(787,100,82),(899,80,125),(984,48,79)]:
+    top=650-h
+    rect(x,top, min(1024,x+w),740,(12,22,47))
+    polygon([(x-8,top+8),(x+w//2,top-24),(x+w+8,top+8)],(17,27,52))
+    for wx in range(x+15,min(x+w-8,1024),27):
+        for wy in range(top+28,720,35):
+            rect(wx,wy,wx+6,wy+9,(255,173,94) if (wx+wy)%3 else (76,116,143))
+rect(0,739,1024,770,(8,16,38))
 
-# The luminous breaker: a long rising shoulder that folds back into a hollow curl.
-outer = bezier((-80,1010),(130,830),(225,410),(542,503),150)
-outer += bezier((542,503),(721,554),(778,744),(1048,690),120)[1:]
-polygon(outer + [(1048,1050),(-80,1050)], (12,116,151))
-inner = bezier((-40,1018),(151,850),(241,545),(470,566),140)
-inner += bezier((470,566),(642,581),(682,734),(1019,720),100)[1:]
-polygon(inner + [(1020,1040),(-40,1040)], (18,53,104))
-# Curl hollow, a dark open eye that makes the breaking shape read clearly.
-hollow = bezier((442,592),(503,548),(649,565),(707,655),80)
-hollow += bezier((707,655),(749,721),(828,724),(943,710),60)[1:]
-hollow += [(940,756),(785,769),(665,737),(554,674)]
-polygon(hollow, (10,21,58))
+# Water horizon glimmer, behind the wave.
+for j in range(13):
+    y=754+j*7; x0=450+(j*37)%180; length=90+(j*53)%210
+    rect(x0,y,min(1024,x0+length),y+2,(46,94,134))
 
-# Flowing aurora ribbons follow the shoulder in tapered, smooth strokes.
-def ribbon(p0,p1,p2,p3,width,color):
-    line = bezier(p0,p1,p2,p3,180)
-    for j,(x,y) in enumerate(line):
-        taper = math.sin(math.pi*j/(len(line)-1))**0.55
-        r = width*taper
-        disk(x,y,r,color,1)
+# Giant aurora wave: a single sweeping silhouette with a hooked crest.
+outer = bezier((-80,1015),(135,856),(252,719),(445,690),150)
+outer += bezier((445,690),(631,663),(693,550),(635,448),120)[1:]
+outer += bezier((635,448),(578,339),(660,252),(781,273),110)[1:]
+outer += bezier((781,273),(924,298),(937,438),(847,515),110)[1:]
+outer += bezier((847,515),(789,563),(771,610),(825,660),80)[1:]
+outer += bezier((825,660),(900,747),(1017,774),(1110,836),130)[1:]
+outer += [(1110,1050),(-80,1050)]
+polygon(outer,(12,54,91))
 
-ribbon((-16,927),(191,775),(213,478),(477,515),25,(35,232,211))
-ribbon((20,966),(197,810),(248,537),(491,551),12,(122,255,222))
-ribbon((82,1014),(307,818),(314,586),(530,581),19,(102,93,232))
-ribbon((497,518),(658,524),(727,684),(1004,657),20,(42,220,221))
-ribbon((514,544),(663,550),(727,703),(1008,686),9,(212,255,226))
-ribbon((555,492),(671,475),(741,589),(827,633),13,(184,106,244))
+# Inner luminous body, inset and echoing the large curl.
+inner = bezier((-30,956),(157,828),(280,745),(453,716),150)
+inner += bezier((453,716),(620,690),(689,578),(630,475),120)[1:]
+inner += bezier((630,475),(574,376),(664,298),(766,313),110)[1:]
+inner += bezier((766,313),(864,326),(883,424),(811,489),110)[1:]
+inner += bezier((811,489),(735,558),(743,628),(821,690),100)[1:]
+inner += bezier((821,690),(898,750),(1003,787),(1070,837),100)[1:]
+inner += [(1070,1050),(-30,1050)]
+polygon(inner,(18,117,145))
 
-# White turquoise crest spray, arcing over the fold.
-crest = bezier((287,490),(365,420),(470,420),(563,492),100)
-for j,(x,y) in enumerate(crest):
-    disk(x,y, 4.5 + 2*math.sin(j/100*math.pi), (207,255,235), 1)
-for x,y,r in [(310,468,5),(340,445,3),(375,425,4),(415,418,3),(451,428,5),(493,450,3),(535,480,4),(562,506,3)]:
-    disk(x,y,r,(224,255,246),1)
+# Turquoise and violet ribbons trace the curl like an aurora caught in surf.
+stroke(bezier((-20,922),(190,800),(318,719),(472,704),150), (77,231,210),34,255)
+stroke(bezier((467,704),(632,686),(718,584),(647,470),145), (120,246,221),28,255)
+stroke(bezier((647,470),(584,365),(670,284),(778,298),130), (75,218,220),24,255)
+stroke(bezier((778,298),(891,311),(914,430),(827,503),135), (178,120,245),20,255)
+stroke(bezier((830,515),(762,590),(779,646),(856,699),100), (91,225,230),23,255)
 
-# Little boat, deliberately readable against the illuminated sea.
-polygon([(404,760),(593,760),(558,796),(444,796)], (47,25,37))
-polygon([(414,756),(583,756),(562,774),(437,774)], (222,125,56))
-for x in range(430,570,25):
-    put(x,765,(255,195,112))
-polygon([(491,654),(493,748),(555,748)], (248,230,190))
-polygon([(495,674),(495,744),(543,744)], (202,210,209))
-polygon([(481,748),(503,748),(499,705),(489,705)], (12,13,28))
-disk(492,695,10,(8,12,29))
-polygon([(485,706),(499,706),(503,748),(477,748)], (8,12,29))
-polygon([(486,716),(477,754),(466,762),(487,760),(497,729)], (8,12,29))
+# Crest foam ribbon, a sweeping pale line around the curl.
+crest=bezier((424,674),(588,649),(650,544),(595,443),130)
+crest+=bezier((595,443),(543,345),(619,257),(735,248),130)[1:]
+crest+=bezier((735,248),(841,239),(921,313),(905,398),120)[1:]
+stroke(crest,(206,255,239),15,255)
+stroke(crest[15::3],(255,232,183),5,235)
 
-# Foreground shadow bands and a few luminous wakes point toward the boat.
-for k in range(7):
-    y = 832 + k*25
-    polygon([(0,y),(95+k*15,y-8),(211+k*12,y),(0,y+7)], (15,73+k*4,112+k*3))
-for p0,p1,p2,p3 in [((-20,870),(140,850),(260,866),(368,833)),((15,930),(143,910),(284,919),(370,889)),((36,1000),(193,971),(300,990),(408,953))]:
-    ribbon(p0,p1,p2,p3,3,(52,196,207))
+# Spray beads around the crest, kept sparse and graphic.
+for i in range(34):
+    x=588+(i*47)%335; y=250+(i*71)%237
+    if i%3 != 0:
+        disc(x,y,2+(i%3),(177,248,239),210)
 
-def png_bytes():
-    raw = b''.join(b'\x00' + pixels[y*W*3:(y+1)*W*3] for y in range(H))
-    def chunk(tag, data):
-        body = tag + data
-        return struct.pack('!I',len(data)) + body + struct.pack('!I',zlib.crc32(body)&0xffffffff)
-    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR',struct.pack('!2I5B',W,H,8,2,0,0,0)) + chunk(b'IDAT',zlib.compress(raw,9)) + chunk(b'IEND',b'')
+# Foreground wake strokes sweep toward the boat.
+for i in range(8):
+    y=856+i*20; start=60+i*37
+    line=bezier((start,y),(250,y-70),(430,y+46),(613,y-36),100)
+    stroke(line,(28+2*i,142+5*i,171+4*i),4 if i%2 else 6,205)
 
+# Boat, clearly readable in silhouette, riding the bright inner shoulder.
+polygon([(355,778),(523,778),(492,817),(392,817)],(29,21,37))
+stroke([(359,778),(520,778)],(252,177,97),8)
+stroke([(390,793),(495,793)],(115,65,42),4)
+# Mast and short sail.
+stroke([(439,775),(439,684)],(33,25,35),8)
+polygon([(432,690),(432,761),(386,754)],(255,187,102))
+polygon([(446,700),(446,762),(487,755)],(235,91,74))
+stroke([(439,682),(439,777)],(255,205,143),3)
+# Lone rider: head, torso, and seated legs.
+disc(441,665,12,(18,22,41))
+stroke([(441,678),(441,723)],(18,22,41),13)
+stroke([(440,698),(420,716)],(18,22,41),9)
+stroke([(442,721),(424,741)],(18,22,41),10)
+stroke([(442,721),(461,740)],(18,22,41),10)
 
-out = os.environ.get('OUTPUT_PATH', '/output/entry.png')
-os.makedirs(os.path.dirname(out), exist_ok=True)
-with open(out, 'wb') as f:
-    f.write(png_bytes())
+# Warm rim light separates the boat and person from the luminous water.
+stroke([(389,820),(493,820)],(255,147,83),3,235)
+
+def chunk(kind, data):
+    return struct.pack('!I',len(data))+kind+data+struct.pack('!I',zlib.crc32(kind+data)&0xffffffff)
+
+raw=b''.join(b'\x00'+pixels[y*W*3:(y+1)*W*3] for y in range(H))
+png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',W,H,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+path=os.environ.get('OUTPUT_PATH','/output/entry.png')
+os.makedirs(os.path.dirname(path) or '.',exist_ok=True)
+with open(path,'wb') as f:
+    f.write(png)
